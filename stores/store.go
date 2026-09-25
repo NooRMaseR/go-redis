@@ -2,11 +2,10 @@ package stores
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 )
 
-var ErrKeyNotFound = errors.New("key not found")
+var ErrKeyNotFound = errors.New("key not found\n")
 
 type Store struct {
 	mut  sync.RWMutex
@@ -28,7 +27,7 @@ func (s *Store) Get(key string) (string, error) {
 	defer s.mut.RUnlock()
 	val, ok := s.data[key]
 	if !ok {
-		return "", fmt.Errorf("Key %v not found", key)
+		return "", ErrKeyNotFound
 	}
 	return val, nil
 }
@@ -65,7 +64,7 @@ func (s *Store) Rename(oldKey, newKey string) error {
 	defer s.mut.Unlock()
 
 	if _, ok := s.data[oldKey]; !ok {
-		return fmt.Errorf("Key %v not found to rename", oldKey)
+		return ErrKeyNotFound
 	}
 	s.data[newKey] = s.data[oldKey]
 	delete(s.data, oldKey)
@@ -73,15 +72,26 @@ func (s *Store) Rename(oldKey, newKey string) error {
 }
 
 func (s *Store) Len() int {
-	s.mut.RLock()
-	defer s.mut.RUnlock()
-	return len(s.data)
+	return len(s.Keys())
+}
+
+func (s *Store) Exists(key string) bool {
+	if _, err := s.Get(key); err != nil {
+		return false
+	}
+	return true
 }
 
 func (s *Store) Clear() {
 	s.mut.Lock()
 	defer s.mut.Unlock()
 	clear(s.data)
+}
+
+func (s *Store) Clone() Store {
+	return Store{
+		data: s.data,
+	}
 }
 
 func NewStore() *Store {

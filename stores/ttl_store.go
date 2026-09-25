@@ -120,9 +120,9 @@ func (s *TTLStore) rename(oldKey, newKey string, checkNewKeyExists bool) error {
 	if checkNewKeyExists {
 		if newVal, newOk := s.data[newKey]; newOk {
 			if newVal.IsExpired() {
-				delete(s.data, newKey) // expired target is safe to overwrite
+				delete(s.data, newKey)
 			} else {
-				return fmt.Errorf("the new key %s already exists, cannot rename", newKey)
+				return fmt.Errorf("the new key %s already exists, cannot rename\n", newKey)
 			}
 		}
 	}
@@ -135,6 +135,19 @@ func (s *TTLStore) rename(oldKey, newKey string, checkNewKeyExists bool) error {
 
 func (s *TTLStore) Len() int {
 	return len(s.Keys())
+}
+
+func (s *TTLStore) Exists(key string) bool {
+	if _, err := s.Get(key); err != nil {
+		return false
+	}
+	return true
+}
+
+func (s *TTLStore) Clone() TTLStore {
+	return TTLStore{
+		data: s.data,
+	}
 }
 
 func (s *TTLStore) Clear() {
