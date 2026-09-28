@@ -11,8 +11,8 @@ import (
 
 func TestKeys_getKeys(t *testing.T) {
 	store := stores.NewStore()
-	store.Set("a", "val")
-	store.Set("b", "val")
+	store.Set("a", "val", 0)
+	store.Set("b", "val", 0)
 	keys := store.Keys()
 
 	slices.Sort(keys)
@@ -24,8 +24,8 @@ func TestKeys_getKeys(t *testing.T) {
 
 func TestKeys_checkValues(t *testing.T) {
 	store := stores.NewStore()
-	store.Set("a", "val1")
-	store.Set("b", "val2")
+	store.Set("a", "val1", 0)
+	store.Set("b", "val2", 0)
 
 	if val1, err1 := store.Get("a"); err1 != nil || val1 != "val1" {
 		t.Errorf("Expected value: \"val1\", found: %v", val1)
@@ -40,8 +40,8 @@ func TestKeys_checkValues(t *testing.T) {
 
 func TestKeys_checkLen(t *testing.T) {
 	store := stores.NewStore()
-	store.Set("a", "val1")
-	store.Set("b", "val2")
+	store.Set("a", "val1", 0)
+	store.Set("b", "val2", 0)
 	if length := store.Len(); length != 2 {
 		t.Errorf("Expected 2 elements, Found %v", length)
 	}
@@ -49,7 +49,7 @@ func TestKeys_checkLen(t *testing.T) {
 
 func TestKeys_checkPop(t *testing.T) {
 	store := stores.NewStore()
-	store.Set("a", "val1")
+	store.Set("a", "val1", 0)
 	poped, err := store.Pop("a")
 	if err != nil || poped != "val1" {
 		t.Errorf("Expected val1, found %v", poped)
@@ -65,7 +65,7 @@ func TestKeys_checkPop(t *testing.T) {
 
 func TestKeys_checkRename(t *testing.T) {
 	store := stores.NewStore()
-	store.Set("a", "val")
+	store.Set("a", "val", 0)
 	if err := store.Rename("a", "b"); err != nil {
 		t.Errorf("%s", err.Error())
 	}
@@ -76,7 +76,7 @@ func TestKeys_checkRename(t *testing.T) {
 
 func TestClear(t *testing.T) {
 	store := stores.NewStore()
-	store.Set("a", "val")
+	store.Set("a", "val", 0)
 	store.Clear()
 	if length := store.Len(); length != 0 {
 		t.Errorf("Expected Len to be 0 because it's cleared, found len = %v", length)
@@ -85,8 +85,8 @@ func TestClear(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	store := stores.NewStore()
-	store.Set("key1", "val1")
-	store.Set("key2", "val2")
+	store.Set("key1", "val1", 0)
+	store.Set("key2", "val2", 0)
 
 	if store.Len() != 2 {
 		t.Fatalf("expected store length to be 2, got %d", store.Len())
@@ -128,7 +128,7 @@ func TestConcurrentAccess(t *testing.T) {
         go func(n int) {
             defer wg.Done()
             k := fmt.Sprintf("k%d", n)
-            store.Set(k, "val")
+            store.Set(k, "val", 0)
         }(i)
     }
 

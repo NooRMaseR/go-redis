@@ -13,10 +13,10 @@ type TTL struct {
 }
 
 type TTLStore struct {
-	mut  sync.RWMutex
-	data map[string]TTL
+	mut    sync.RWMutex
+	data   map[string]TTL
 	cancel context.CancelFunc
-	wg sync.WaitGroup
+	wg     sync.WaitGroup
 }
 
 func (t *TTL) IsExpired() bool {
@@ -50,18 +50,27 @@ func (s *TTLStore) Get(key string) (string, error) {
 	if val.IsExpired() {
 		s.mut.Lock()
 		if cur, exists := s.data[key]; exists && cur.IsExpired() {
-            delete(s.data, key)
-        }
+			delete(s.data, key)
+		}
 		s.mut.Unlock()
 		return "", ErrKeyNotFound
 	}
 	return val.Value, nil
 }
 
-func (s *TTLStore) Set(key string, value TTL) {
+func (s *TTLStore) Set(key string, value string, ttl time.Duration) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
-	s.data[key] = value
+	var exp time.Time
+
+	if ttl > 0 {
+		exp = time.Now().Add(ttl)
+	}
+	
+	s.data[key] = TTL{
+		Value:      value,
+		Expiration: exp,
+	}
 }
 
 func (s *TTLStore) Delete(key string) {
@@ -84,7 +93,6 @@ func (s *TTLStore) Pop(key string) (string, error) {
 	}
 	return "", ErrKeyNotFound
 }
-
 
 /*
 checks for key existence and renames the key if it exists
@@ -189,14 +197,14 @@ func (s *TTLStore) runJanitor(ctx context.Context, interval time.Duration) {
 
 func NewTTLStore(interval time.Duration) *TTLStore {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	s := &TTLStore{
-		data: make(map[string]TTL),
+		data:   make(map[string]TTL),
 		cancel: cancel,
 	}
 
 	if interval > 0 {
-		s.wg.Go(func() {s.runJanitor(ctx, interval)})
+		s.wg.Go(func() { s.runJanitor(ctx, interval) })
 	}
 
 	return s

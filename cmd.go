@@ -68,11 +68,11 @@ func RunSetCommand(conn net.Conn, store stores.IStore, args []string) {
 			conn.Write([]byte("expiration must be an integer\n"))
 			return
 		}
-		store.Set(args[1], stores.TTL{Value: args[2], Expiration: time.Now().Add(time.Millisecond * time.Duration(expiration))})
+		store.Set(args[1], args[2],time.Millisecond * time.Duration(expiration))
 		SendOk(conn)
 		return
 	}
-	store.Set(args[1], stores.TTL{Value: args[2]})
+	store.Set(args[1], args[2], 0)
 	SendOk(conn)
 }
 

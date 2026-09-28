@@ -10,8 +10,8 @@ import (
 
 func TestTTLKeys_getKeys(t *testing.T) {
 	store := stores.NewTTLStore(0)
-	store.Set("a", stores.TTL{Value: "val1", Expiration: time.Now().Add(10 * time.Second)})
-	store.Set("b", stores.TTL{Value: "val2", Expiration: time.Now().Add(20 * time.Second)})
+	store.Set("a", "val1", 10 * time.Second)
+	store.Set("b", "val2", 20 * time.Second)
 	keys := store.Keys()
 
 	slices.Sort(keys)
@@ -24,8 +24,8 @@ func TestTTLKeys_getKeys(t *testing.T) {
 
 func TestKeysTTL_checkValues(t *testing.T) {
 	store := stores.NewTTLStore(0)
-	store.Set("a", stores.TTL{Value: "val1", Expiration: time.Now().Add(10 * time.Second)})
-	store.Set("b", stores.TTL{Value: "val2", Expiration: time.Now().Add(10 * time.Second)})
+	store.Set("a", "val1", 10 * time.Second)
+	store.Set("b", "val2", 10 * time.Second)
 
 	if val1, err1 := store.Get("a"); err1 != nil || val1 != "val1" {
 		t.Errorf("Expected value: \"val1\", found: %v", val1)
@@ -40,8 +40,8 @@ func TestKeysTTL_checkValues(t *testing.T) {
 
 func TestKTTLeys_checkLen(t *testing.T) {
 	store := stores.NewTTLStore(0)
-	store.Set("a", stores.TTL{Value: "val1", Expiration: time.Now().Add(10 * time.Second)})
-	store.Set("b", stores.TTL{Value: "val2", Expiration: time.Now().Add(10 * time.Second)})
+	store.Set("a", "val1", 10 * time.Second)
+	store.Set("b", "val2", 10 * time.Second)
 	if length := store.Len(); length != 2 {
 		t.Errorf("Expected 2 elements, Found %v", length)
 	}
@@ -49,7 +49,7 @@ func TestKTTLeys_checkLen(t *testing.T) {
 
 func TestKTTLeys_checkPop(t *testing.T) {
 	store := stores.NewTTLStore(0)
-	store.Set("a", stores.TTL{Value: "val1", Expiration: time.Now().Add(10 * time.Second)})
+	store.Set("a", "val1", 10 * time.Second)
 	poped, err := store.Pop("a")
 	if err != nil || poped != "val1" {
 		t.Errorf("Expected val1, found %v", poped)
@@ -65,7 +65,7 @@ func TestKTTLeys_checkPop(t *testing.T) {
 
 func TestKeysTTL_checkRename(t *testing.T) {
 	store := stores.NewTTLStore(0)
-	store.Set("a", stores.TTL{Value: "val", Expiration: time.Now().Add(10 * time.Second)})
+	store.Set("a", "val", 10 * time.Second)
 	if err := store.Rename("a", "b"); err != nil {
 		t.Errorf("%s", err.Error())
 	}
@@ -76,7 +76,7 @@ func TestKeysTTL_checkRename(t *testing.T) {
 
 func TestTTLClear(t *testing.T) {
 	store := stores.NewTTLStore(0)
-	store.Set("a", stores.TTL{Value: "val", Expiration: time.Now().Add(10 * time.Second)})
+	store.Set("a", "val", 10 * time.Second)
 	store.Clear()
 	if length := store.Len(); length != 0 {
 		t.Errorf("Expected Len to be 0 because it's cleared, found len = %v", length)
@@ -89,10 +89,7 @@ func TestBackgroundCleanup(t *testing.T) {
 	defer store.Close()
 
 	// Insert a key that expires in 30ms
-	store.Set("ephemeral", stores.TTL{
-		Value:      "temp",
-		Expiration: time.Now().Add(40 * time.Millisecond),
-	})
+	store.Set("ephemeral", "temp", 40 * time.Millisecond)
 
 	// Wait 60ms so both expiration and ticker pass
 	time.Sleep(2 * time.Second)

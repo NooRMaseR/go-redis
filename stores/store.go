@@ -2,7 +2,9 @@ package stores
 
 import (
 	"errors"
+	"fmt"
 	"sync"
+	"time"
 )
 
 var ErrKeyNotFound = errors.New("key not found\n")
@@ -32,7 +34,7 @@ func (s *Store) Get(key string) (string, error) {
 	return val, nil
 }
 
-func (s *Store) Set(key, value string) {
+func (s *Store) Set(key, value string, ttl time.Duration) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
 	s.data[key] = value
@@ -56,17 +58,38 @@ func (s *Store) Pop(key string) (string, error) {
 }
 
 func (s *Store) Rename(oldKey, newKey string) error {
+	return s.rename(oldKey, newKey, false)
+}
+
+func (s *Store) RenameNX(oldKey, newKey string) error {
+	return s.rename(oldKey, newKey, true)
+}
+
+func (s *Store) rename(oldKey, newKey string, checkNewKeyExists bool) error {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
+	// 1. Verify oldKey is present and alive
+	val, ok := s.data[oldKey]
+	if !ok {
+		delete(s.data, oldKey)
+		return ErrKeyNotFound
+	}
+
+	// 2. Identity check
 	if oldKey == newKey {
 		return nil
 	}
 
-	s.mut.Lock()
-	defer s.mut.Unlock()
-
-	if _, ok := s.data[oldKey]; !ok {
-		return ErrKeyNotFound
+	// 3. RenameNX check
+	if checkNewKeyExists {
+		if _, newOk := s.data[newKey]; newOk {
+			return fmt.Errorf("the new key %s already exists, cannot rename\n", newKey)
+		}
 	}
-	s.data[newKey] = s.data[oldKey]
+
+	// 4. Overwrite & move
+	s.data[newKey] = val
 	delete(s.data, oldKey)
 	return nil
 }
@@ -93,6 +116,8 @@ func (s *Store) Clone() Store {
 		data: s.data,
 	}
 }
+
+func (s *Store) Close() {}
 
 func NewStore() *Store {
 	return &Store{
