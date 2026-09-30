@@ -1,0 +1,38 @@
+name: Build Go Binary for Windows and Linux
+on: 
+    push:
+        branches: ["main"]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      
+      - name: check dependencies
+        run: go mod verify
+
+      - name: Run tests
+        run: go test -v -test.fullpath -race ./tests
+   
+      - name: Build for Windows
+        run: GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o bin/windows/go-redis.exe .
+
+      - name: Build for Linux
+        run: GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/linux/go-redis .
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-redis 
+          path: bin/linux/go-redis bin/windows/go-redis.exe 
+          retention-days: 1 
+          upload-on-success: true

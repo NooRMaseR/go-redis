@@ -7,19 +7,14 @@ import (
 	"time"
 )
 
-type TTL struct {
-	Value      string
-	Expiration time.Time
-}
-
 type TTLStore struct {
 	mut    sync.RWMutex
-	data   map[string]TTL
+	data   map[string]*StoreValue
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
 
-func (t *TTL) IsExpired() bool {
+func (t *StoreValue) IsExpired() bool {
 	if t.Expiration.IsZero() {
 		return false
 	}
@@ -39,6 +34,17 @@ func (s *TTLStore) Keys() []string {
 	return keys
 }
 
+func (s *TTLStore) OGet(key string) (*StoreValue, error) {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
+	obj, ok := s.data[key]
+	if !ok {
+		return &StoreValue{}, ErrKeyNotFound
+	}
+	return obj, nil
+}
+
 func (s *TTLStore) Get(key string) (string, error) {
 	s.mut.RLock()
 	val, ok := s.data[key]
@@ -55,22 +61,139 @@ func (s *TTLStore) Get(key string) (string, error) {
 		s.mut.Unlock()
 		return "", ErrKeyNotFound
 	}
-	return val.Value, nil
+	if val.Type != TypeString {
+		return "", ErrWrongType
+	}
+	return val.StrValue, nil
 }
 
-func (s *TTLStore) Set(key string, value string, ttl time.Duration) {
+func (s *TTLStore) Set(key, value string, ttl time.Duration) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
+
 	var exp time.Time
 
 	if ttl > 0 {
 		exp = time.Now().Add(ttl)
 	}
-	
-	s.data[key] = TTL{
-		Value:      value,
+
+	s.data[key] = &StoreValue{
+		Type:       TypeString,
+		StrValue:   value,
 		Expiration: exp,
 	}
+}
+
+func (s *TTLStore) Expire(key string, ttl time.Duration) error {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	if val, ok := s.data[key]; ok {
+		val.Expiration = time.Now().Add(ttl)
+		return nil
+	}
+	return ErrKeyNotFound
+}
+
+func (s *TTLStore) RPush(key string, values []string) error {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
+	obj, ok := s.data[key]
+	if !ok {
+		s.data[key] = &StoreValue{
+			Type:       TypeList,
+			ListValue:  values,
+			Expiration: time.Time{},
+		}
+		return nil
+	}
+
+	if obj.Type != TypeList {
+		return ErrWrongType
+	}
+
+	obj.ListValue = append(obj.ListValue, values...)
+	return nil
+}
+
+func (s *TTLStore) LRange(key string, start, stop int) ([]string, error) {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
+	obj, ok := s.data[key]
+	if !ok {
+		return []string{}, ErrKeyNotFound
+	}
+
+	if obj.Type != TypeList {
+		return []string{}, ErrWrongType
+	}
+
+	length := len(obj.ListValue)
+	if length == 0 {
+		return []string{}, nil
+	}
+
+	if start < 0 {
+		start += length
+	}
+
+	if stop < 0 {
+		stop += length
+	}
+
+	if start < 0 {
+		start = 0
+	}
+
+	if stop >= length {
+		stop = length - 1
+	}
+
+	if start > stop || stop >= length {
+		return []string{}, nil
+	}
+
+	return obj.ListValue[start : stop+1], nil
+}
+
+func (s *TTLStore) HGet(key string) (map[string]string, error) {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
+	obj, ok := s.data[key]
+	if !ok {
+		return map[string]string{}, ErrKeyNotFound
+	}
+
+	if obj.Type != TypeHash {
+		return map[string]string{}, ErrWrongType
+	}
+
+	return obj.HashValue, nil
+}
+
+func (s *TTLStore) HSet(key, name, value string) error {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
+	obj, ok := s.data[key]
+	if !ok {
+		s.data[key] = &StoreValue{
+			Type:       TypeHash,
+			HashValue:  map[string]string{name: value},
+			Expiration: time.Time{},
+		}
+		obj, _ = s.data[key]
+		return nil
+	}
+
+	if obj.Type != TypeHash {
+		return ErrWrongType
+	}
+
+	obj.HashValue[name] = value
+	return nil
 }
 
 func (s *TTLStore) Delete(key string) {
@@ -89,7 +212,7 @@ func (s *TTLStore) Pop(key string) (string, error) {
 		if val.IsExpired() {
 			return "", ErrKeyNotFound
 		}
-		return val.Value, nil
+		return val.StrValue, nil
 	}
 	return "", ErrKeyNotFound
 }
@@ -199,7 +322,7 @@ func NewTTLStore(interval time.Duration) *TTLStore {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	s := &TTLStore{
-		data:   make(map[string]TTL),
+		data:   make(map[string]*StoreValue),
 		cancel: cancel,
 	}
 

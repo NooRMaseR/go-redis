@@ -7,14 +7,11 @@ import (
 	"time"
 
 	"github.com/NooRMaseR/go-redis/stores"
+	"github.com/NooRMaseR/go-redis/utils"
 )
 
 func SendOk(conn net.Conn) {
 	conn.Write([]byte("OK\n"))
-}
-
-func FormatListToString(list []string) string {
-	return "[ " + strings.Join(list, ", ") + " ]" + "\n"
 }
 
 func ParseCommand(command string) []string {
@@ -51,7 +48,7 @@ func RunGetCommand(conn net.Conn, store stores.IStore, args []string) {
 			}
 		}
 
-		conn.Write([]byte(FormatListToString(results)))
+		conn.Write([]byte(utils.FormatListToString(results)))
 	}
 }
 
@@ -63,12 +60,12 @@ func RunSetCommand(conn net.Conn, store stores.IStore, args []string) {
 	}
 
 	if length == 4 {
-		expiration, err := strconv.Atoi(args[3])
+		expiration, err := time.ParseDuration(args[3])
 		if err != nil {
-			conn.Write([]byte("expiration must be an integer\n"))
+			conn.Write([]byte(stores.ErrInvalidDuration.Error()))
 			return
 		}
-		store.Set(args[1], args[2],time.Millisecond * time.Duration(expiration))
+		store.Set(args[1], args[2], expiration)
 		SendOk(conn)
 		return
 	}
@@ -139,7 +136,7 @@ func RunExistCommand(conn net.Conn, store stores.IStore, args []string) {
 			}
 		}
 
-		conn.Write([]byte(FormatListToString(results)))
+		conn.Write([]byte(utils.FormatListToString(results)))
 	} else {
 		ok := store.Exists(args[1])
 		if ok {
@@ -169,7 +166,7 @@ func RunPopCommand(conn net.Conn, store stores.IStore, args []string) {
 			}
 		}
 
-		conn.Write([]byte(FormatListToString(results)))
+		conn.Write([]byte(utils.FormatListToString(results)))
 	} else {
 		val, err := store.Pop(args[1])
 		if err != nil {
@@ -178,4 +175,118 @@ func RunPopCommand(conn net.Conn, store stores.IStore, args []string) {
 		}
 		conn.Write([]byte(val + "\n"))
 	}
+}
+
+func RunRPushCommand(conn net.Conn, store stores.IStore, args []string) {
+	length := len(args)
+	if length < 3 {
+		conn.Write([]byte("unknown RPUSH command: RPUSH <key> <values...>\n"))
+		return
+	}
+
+	err := store.RPush(args[1], args[2:])
+	if err != nil {
+		conn.Write([]byte("could not push: " + err.Error()))
+		return
+	}
+	SendOk(conn)
+}
+
+func RunLRangeCommand(conn net.Conn, store stores.IStore, args []string) {
+	length := len(args)
+	if length != 4 {
+		conn.Write([]byte("unknown LRANGE command: LRANGE <key> <start> <stop>\n"))
+		return
+	}
+
+	start, err := strconv.Atoi(args[2])
+	if err != nil {
+		conn.Write([]byte("start number error: please enter a valid number"))
+		return
+	}
+
+	stop, err := strconv.Atoi(args[3])
+	if err != nil {
+		conn.Write([]byte("stop number error: please enter a valid number"))
+		return
+	}
+
+	values, err := store.LRange(args[1], start, stop)
+	if err != nil {
+		conn.Write([]byte("could not get range: " + err.Error()))
+		return
+	}
+	conn.Write([]byte(utils.FormatListToString(values)))
+}
+
+func RunHGetCommand(conn net.Conn, store stores.IStore, args []string) {
+	length := len(args)
+	if length != 2 {
+		conn.Write([]byte("unknown HGET command, expected HGET <key>\n"))
+		return
+	}
+	val, err := store.HGet(args[1])
+	if err != nil {
+		conn.Write([]byte(err.Error()))
+		return
+	}
+	conn.Write([]byte(utils.FormatMapToString(val)))
+}
+
+func RunHSetCommand(conn net.Conn, store stores.IStore, args []string) {
+	length := len(args)
+	if length != 4 {
+		conn.Write([]byte("unknown HGET command, expected HSET <key> <keyName> <value>\n"))
+		return
+	}
+	err := store.HSet(args[1], args[2], args[3])
+	if err != nil {
+		conn.Write([]byte(err.Error()))
+		return
+	}
+	SendOk(conn)
+}
+
+func RunExpireCommand(conn net.Conn, store stores.IStore, args []string) {
+	var (
+		length int = len(args)
+		dur    time.Duration
+		err    error
+	)
+
+	if length != 3 {
+		conn.Write([]byte("unknown EXPIRE command: expected EXPIRE <key> <ttl>\n"))
+		return
+	}
+
+	dur, err = time.ParseDuration(args[2])
+	if err != nil {
+		conn.Write([]byte("unknown ttl number\n"))
+		return
+	}
+
+	err = store.Expire(args[1], dur)
+	if err != nil {
+		conn.Write([]byte(err.Error()))
+		return
+	}
+
+	SendOk(conn)
+}
+
+func RunTTLCommand(conn net.Conn, store stores.IStore, args []string) {
+	length := len(args)
+	if length != 2 {
+		conn.Write([]byte("unknown TTL command: expected TTL <key>\n"))
+		return
+	}
+	
+	obj, err := store.OGet(args[1])
+	if err != nil {
+		conn.Write([]byte(err.Error()))
+		return
+	}
+	
+	remaining := time.Until(obj.Expiration)
+	conn.Write([]byte(strconv.Itoa(int(remaining.Milliseconds())) + "\n"))
 }
