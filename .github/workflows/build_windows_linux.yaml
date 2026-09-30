@@ -29,12 +29,16 @@ jobs:
       - name: Build for Linux
         run: GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/linux/go-redis .
 
-      - name: Upload artifacts
+      - name: Upload windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: go-redis 
-          path: |
-            bin/linux/go-redis
-            bin/windows/go-redis.exe 
-          retention-days: 1 
-          upload-on-success: true
+          path: bin/windows/go-redis.exe
+          retention-days: 1
+      
+      - name: Upload linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-redis 
+          path: bin/linux/go-redis
+          retention-days: 1
