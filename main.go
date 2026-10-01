@@ -2,9 +2,9 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"log"
-	"flag"
 	"net"
 	"strconv"
 	"strings"
@@ -29,7 +29,7 @@ func main() {
 
 	var (
 		store stores.IStore
-		adr string = ":" + *port
+		adr   string = ":" + *port
 	)
 
 	if *noTTL {
@@ -79,67 +79,68 @@ func handleConnection(conn net.Conn, store stores.IStore) {
 		if len(args) == 0 {
 			continue
 		}
-		
+
 		cmd := strings.ToUpper(args[0])
 
 		switch cmd {
-			case "KEYS":
-				conn.Write([]byte(utils.FormatListToString(store.Keys())))
-			case "GET":
-				RunGetCommand(conn, store, args)
-			case "SET":
-				RunSetCommand(conn, store, args)
-			case "DELETE":
-				RunDeleteCommand(conn, store, args)
-			case "RENAME":
-				RunRenameCommand(conn, store, args)
-			case "RENAMENX":
-				RunRenameNxCommand(conn, store, args)
-			case "EXIST":
-				RunExistCommand(conn, store, args)
-			case "POP":
-				RunPopCommand(conn, store, args)
-			case "RPUSH":
-				RunRPushCommand(conn, store, args)
-			case "LRANGE":
-				RunLRangeCommand(conn, store, args)
-			case "HGET":
-				RunHGetCommand(conn, store, args)
-			case "HSET":
-				RunHSetCommand(conn, store, args)
-			case "EXPIRE":
-				RunExpireCommand(conn, store, args)
-			case "TTL":
-				RunTTLCommand(conn, store, args)
-			case "LEN":
-				conn.Write([]byte(strconv.Itoa(store.Len()) + "\n"))
-			case "CLEAR":
-				store.Clear()
-				SendOk(conn)
-			case "HELP":
-				helpText := "Available Commands:\n" +
-					"  KEYS                               - Get all active keys\n" +
-					"  GET <keys...>                      - Get key value(s)\n" +
-					"  SET <key> <val> [ttl]              - Set key with optional TTL\n" +
-					"  DELETE <keys...>                   - Delete keys\n" +
-					"  RENAME <oldKey> <newKey>           - Rename a key with a new key name (Danger: no checking if the new Key exist and can override data)\n" +
-					"  RENAMENX <oldKey> <newKey>         - Rename a key with a new key name with checking if the new Key exists first or not\n" +
-					"  EXIST <keys...>                    - Check if the keys are exists or not\n" +
-					"  EXPIRE <key> <ttl>                 - Change the expiration of a key\n" +
-					"  POP <keys...>                      - Get and delete a key's value at the same time\n" +
-					"  LEN                                - Count of active keys\n" +
-					"  RPUSH                              - Adds an element to the right of an array, if it doesn't exists it creates a new array\n" +
-					"  LRANGE <start> <stop>              - Gets elements starting from the left of an array (index 0)\n" +
-					"  HGet <key>                         - Gets the HashMap formated as a string\n" +
-					"  HSET <key> <keyName> <value>       - Sets keyName value to a HashMap\n" +
-					"  CLEAR                              - Flush all keys\n" +
-					"  EXIST                              - Exit the server\n"
-				conn.Write([]byte(helpText))
-			case "EXIT":
-				conn.Close()
-				return
-			default:
-				conn.Write([]byte("-ERR unknown command '" + cmd + "', try HELP command for help\n"))
+		case "KEYS":
+			conn.Write([]byte(utils.FormatListToString(store.Keys())))
+		case "GET":
+			RunGetCommand(conn, store, args)
+		case "SET":
+			RunSetCommand(conn, store, args)
+		case "DELETE":
+			RunDeleteCommand(conn, store, args)
+		case "RENAME":
+			RunRenameCommand(conn, store, args)
+		case "RENAMENX":
+			RunRenameNxCommand(conn, store, args)
+		case "EXIST":
+			RunExistCommand(conn, store, args)
+		case "POP":
+			RunPopCommand(conn, store, args)
+		case "RPUSH":
+			RunRPushCommand(conn, store, args)
+		case "LRANGE":
+			RunLRangeCommand(conn, store, args)
+		case "HGET":
+			RunHGetCommand(conn, store, args)
+		case "HSET":
+			RunHSetCommand(conn, store, args)
+		case "EXPIRE":
+			RunExpireCommand(conn, store, args)
+		case "TTL":
+			RunTTLCommand(conn, store, args)
+		case "LEN":
+			conn.Write([]byte(strconv.Itoa(store.Len()) + "\n"))
+		case "CLEAR":
+			store.Clear()
+			SendOk(conn)
+		case "HELP":
+			helpText := "Available Commands:\n" +
+				"  KEYS                               - Get all active keys\n" +
+				"  GET <keys...>                      - Get key value(s)\n" +
+				"  SET <key> <val> [ttl]              - Set key with optional TTL\n" +
+				"  DELETE <keys...>                   - Delete keys\n" +
+				"  RENAME <oldKey> <newKey>           - Rename a key with a new key name (Danger: no checking if the new Key exist and can override data)\n" +
+				"  RENAMENX <oldKey> <newKey>         - Rename a key with a new key name with checking if the new Key exists first or not\n" +
+				"  EXIST <keys...>                    - Check if the keys are exists or not\n" +
+				"  EXPIRE <key> <ttl>                 - Change the expiration of a key\n" +
+				"  POP <keys...>                      - Get and delete a key's value at the same time\n" +
+				"  LEN                                - Count of active keys\n" +
+				"  RPUSH                              - Adds an element to the right of an array, if it doesn't exists it creates a new array\n" +
+				"  LRANGE <start> <stop>              - Gets elements starting from the left of an array (index 0)\n" +
+				"  HGet <key>                         - Gets the HashMap formated as a string\n" +
+				"  HSET <key> <keyName> <value>       - Sets keyName value to a HashMap\n" +
+				"  CLEAR                              - Flush all keys\n" +
+				"  EXIST                              - Exit the server\n"
+			conn.Write([]byte(helpText))
+		case "EXIT":
+			conn.Write([]byte("Bye!\n"))
+			conn.Close()
+			return
+		default:
+			conn.Write([]byte("-ERR unknown command '" + cmd + "', try HELP command for help\n"))
 		}
 	}
 }

@@ -3,22 +3,16 @@ package stores
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 )
 
 type TTLStore struct {
 	mut    sync.RWMutex
+	wg     sync.WaitGroup
 	data   map[string]*StoreValue
 	cancel context.CancelFunc
-	wg     sync.WaitGroup
-}
-
-func (t *StoreValue) IsExpired() bool {
-	if t.Expiration.IsZero() {
-		return false
-	}
-	return time.Now().After(t.Expiration)
 }
 
 func (s *TTLStore) Keys() []string {
@@ -39,7 +33,7 @@ func (s *TTLStore) OGet(key string) (*StoreValue, error) {
 	defer s.mut.RUnlock()
 
 	obj, ok := s.data[key]
-	if !ok {
+	if !ok || obj.IsExpired() {
 		return &StoreValue{}, ErrKeyNotFound
 	}
 	return obj, nil
@@ -87,7 +81,7 @@ func (s *TTLStore) Set(key, value string, ttl time.Duration) {
 func (s *TTLStore) Expire(key string, ttl time.Duration) error {
 	s.mut.Lock()
 	defer s.mut.Unlock()
-	if val, ok := s.data[key]; ok {
+	if val, ok := s.data[key]; ok && !val.IsExpired() {
 		val.Expiration = time.Now().Add(ttl)
 		return nil
 	}
@@ -99,10 +93,10 @@ func (s *TTLStore) RPush(key string, values []string) error {
 	defer s.mut.Unlock()
 
 	obj, ok := s.data[key]
-	if !ok {
+	if !ok || obj.IsExpired() {
 		s.data[key] = &StoreValue{
 			Type:       TypeList,
-			ListValue:  values,
+			ListValue:  append([]string{}, values...),
 			Expiration: time.Time{},
 		}
 		return nil
@@ -121,7 +115,7 @@ func (s *TTLStore) LRange(key string, start, stop int) ([]string, error) {
 	defer s.mut.RUnlock()
 
 	obj, ok := s.data[key]
-	if !ok {
+	if !ok || obj.IsExpired() {
 		return []string{}, ErrKeyNotFound
 	}
 
@@ -150,11 +144,13 @@ func (s *TTLStore) LRange(key string, start, stop int) ([]string, error) {
 		stop = length - 1
 	}
 
-	if start > stop || stop >= length {
+	if start > stop {
 		return []string{}, nil
 	}
 
-	return obj.ListValue[start : stop+1], nil
+	result := make([]string, stop-start+1)
+	copy(result, obj.ListValue[start : stop+1])
+	return result, nil
 }
 
 func (s *TTLStore) HGet(key string) (map[string]string, error) {
@@ -162,7 +158,7 @@ func (s *TTLStore) HGet(key string) (map[string]string, error) {
 	defer s.mut.RUnlock()
 
 	obj, ok := s.data[key]
-	if !ok {
+	if !ok || obj.IsExpired() {
 		return map[string]string{}, ErrKeyNotFound
 	}
 
@@ -170,7 +166,9 @@ func (s *TTLStore) HGet(key string) (map[string]string, error) {
 		return map[string]string{}, ErrWrongType
 	}
 
-	return obj.HashValue, nil
+	data := make(map[string]string, len(obj.HashValue))
+	maps.Copy(data, obj.HashValue)
+	return data, nil
 }
 
 func (s *TTLStore) HSet(key, name, value string) error {
@@ -178,13 +176,12 @@ func (s *TTLStore) HSet(key, name, value string) error {
 	defer s.mut.Unlock()
 
 	obj, ok := s.data[key]
-	if !ok {
+	if !ok || obj.IsExpired() {
 		s.data[key] = &StoreValue{
 			Type:       TypeHash,
 			HashValue:  map[string]string{name: value},
 			Expiration: time.Time{},
 		}
-		obj, _ = s.data[key]
 		return nil
 	}
 
@@ -237,7 +234,11 @@ func (s *TTLStore) rename(oldKey, newKey string, checkNewKeyExists bool) error {
 
 	// 1. Verify oldKey is present and alive
 	val, ok := s.data[oldKey]
-	if !ok || val.IsExpired() {
+	if !ok {
+		return ErrKeyNotFound
+	}
+	
+	if val.IsExpired() {
 		delete(s.data, oldKey)
 		return ErrKeyNotFound
 	}
@@ -269,14 +270,18 @@ func (s *TTLStore) Len() int {
 }
 
 func (s *TTLStore) Exists(key string) bool {
-	if _, err := s.Get(key); err != nil {
-		return false
-	}
-	return true
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
+	val, ok := s.data[key]
+	return ok && !val.IsExpired()
 }
 
-func (s *TTLStore) Clone() TTLStore {
-	return TTLStore{
+func (s *TTLStore) Clone() *TTLStore {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
+	return &TTLStore{
 		data: s.data,
 	}
 }

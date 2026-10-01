@@ -2,6 +2,7 @@ package stores
 
 import (
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 )
@@ -14,6 +15,7 @@ type Store struct {
 func (s *Store) Keys() []string {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
+
 	keys := make([]string, 0, len(s.data))
 	for key := range s.data {
 		keys = append(keys, key)
@@ -36,21 +38,95 @@ func (s *Store) Get(key string) (string, error) {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
 	val, ok := s.data[key]
+
 	if !ok {
 		return "", ErrKeyNotFound
 	}
+
+	if val.Type != TypeString {
+		return "", ErrWrongType
+	}
+
 	return val.StrValue, nil
 }
 
 func (s *Store) Set(key, value string, ttl time.Duration) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
+
 	s.data[key] = &StoreValue{
+		Type:       TypeString,
 		StrValue:   value,
 		Expiration: time.Time{},
 	}
 }
 
+func (s *Store) Expire(key string, ttl time.Duration) error {return nil}
+
+func (s *Store) RPush(key string, values []string) error {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
+	obj, ok := s.data[key]
+	if !ok {
+		s.data[key] = &StoreValue{
+			Type:       TypeList,
+			ListValue:  append([]string{}, values...),
+			Expiration: time.Time{},
+		}
+		return nil
+	}
+
+	if obj.Type != TypeList {
+		return ErrWrongType
+	}
+
+	obj.ListValue = append(obj.ListValue, values...)
+	return nil
+}
+
+func (s *Store) LRange(key string, start, stop int) ([]string, error) {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
+	obj, ok := s.data[key]
+	if !ok {
+		return []string{}, ErrKeyNotFound
+	}
+
+	if obj.Type != TypeList {
+		return []string{}, ErrWrongType
+	}
+
+	length := len(obj.ListValue)
+	if length == 0 {
+		return []string{}, nil
+	}
+
+	if start < 0 {
+		start += length
+	}
+
+	if stop < 0 {
+		stop += length
+	}
+
+	if start < 0 {
+		start = 0
+	}
+
+	if stop >= length {
+		stop = length - 1
+	}
+
+	if start > stop {
+		return []string{}, nil
+	}
+
+	result := make([]string, stop-start+1)
+	copy(result, obj.ListValue[start:stop+1])
+	return result, nil
+}
 
 func (s *Store) HGet(key string) (map[string]string, error) {
 	s.mut.RLock()
@@ -60,12 +136,14 @@ func (s *Store) HGet(key string) (map[string]string, error) {
 	if !ok {
 		return map[string]string{}, ErrKeyNotFound
 	}
-	
+
 	if obj.Type != TypeHash {
 		return map[string]string{}, ErrWrongType
 	}
 
-	return obj.HashValue, nil
+	data := make(map[string]string, len(obj.HashValue))
+	maps.Copy(data, obj.HashValue)
+	return data, nil
 }
 
 func (s *Store) HSet(key, name, value string) error {
@@ -79,7 +157,6 @@ func (s *Store) HSet(key, name, value string) error {
 			HashValue:  map[string]string{name: value},
 			Expiration: time.Time{},
 		}
-		obj, _ = s.data[key]
 		return nil
 	}
 
@@ -100,6 +177,7 @@ func (s *Store) Delete(key string) {
 func (s *Store) Pop(key string) (string, error) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
+
 	val, ok := s.data[key]
 	if ok {
 		delete(s.data, key)
@@ -108,10 +186,16 @@ func (s *Store) Pop(key string) (string, error) {
 	return "", ErrKeyNotFound
 }
 
+/*
+checks for key existence and renames the key if it exists
+*/
 func (s *Store) Rename(oldKey, newKey string) error {
 	return s.rename(oldKey, newKey, false)
 }
 
+/*
+checks for key existence and renames the key if it exists and check if the New Key Exists
+*/
 func (s *Store) RenameNX(oldKey, newKey string) error {
 	return s.rename(oldKey, newKey, true)
 }
@@ -123,7 +207,6 @@ func (s *Store) rename(oldKey, newKey string, checkNewKeyExists bool) error {
 	// 1. Verify oldKey is present and alive
 	val, ok := s.data[oldKey]
 	if !ok {
-		delete(s.data, oldKey)
 		return ErrKeyNotFound
 	}
 
@@ -149,21 +232,21 @@ func (s *Store) Len() int {
 	return len(s.Keys())
 }
 
-func (s *Store) Expire(key string, ttl time.Duration) error {
-	s.mut.Lock()
-	defer s.mut.Unlock()
-	if val, ok := s.data[key]; ok {
-		val.Expiration = time.Now().Add(ttl)
-		return nil
-	}
-	return ErrKeyNotFound
+func (s *Store) Exists(key string) bool {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
+	_, ok := s.data[key]
+	return ok
 }
 
-func (s *Store) Exists(key string) bool {
-	if _, err := s.Get(key); err != nil {
-		return false
+func (s *Store) Clone() *Store {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
+	return &Store{
+		data: s.data,
 	}
-	return true
 }
 
 func (s *Store) Clear() {
@@ -172,15 +255,7 @@ func (s *Store) Clear() {
 	clear(s.data)
 }
 
-func (s *Store) Clone() Store {
-	return Store{
-		data: s.data,
-	}
-}
-
-func (s *Store) Close()                                               {}
-func (s *Store) LRange(key string, start, stop int) ([]string, error) { return []string{}, nil }
-func (s *Store) RPush(key string, values []string) error              { return nil }
+func (s *Store) Close() {}
 
 func NewStore() *Store {
 	return &Store{

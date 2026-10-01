@@ -6,17 +6,24 @@ import (
 )
 
 var (
-	ErrKeyNotFound = errors.New("key not found\n")
-	ErrWrongType   = errors.New("WRONGTYPE operation performed on a wrong kind of value type\n")
+	ErrKeyNotFound     = errors.New("key not found\n")
+	ErrWrongType       = errors.New("WRONGTYPE operation performed on a wrong kind of value type\n")
 	ErrInvalidDuration = errors.New("expiration must be a valid duration\n")
 )
 
 type StoreValue struct {
-	Type       DataType
-	StrValue   string
-	ListValue  []string
-	HashValue  map[string]string
 	Expiration time.Time
+	ListValue  []string
+	StrValue   string
+	HashValue  map[string]string
+	Type       DataType
+}
+
+func (t *StoreValue) IsExpired() bool {
+	if t.Expiration.IsZero() {
+		return false
+	}
+	return time.Now().After(t.Expiration)
 }
 
 type IStore interface {
